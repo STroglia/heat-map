@@ -1,3 +1,5 @@
+import { getDailyTotals, getIntensityLevel } from './js/heatmap.js';
+
 'use strict';
 
 const STORAGE_KEY = 'diario-estudio-v1';
@@ -12,7 +14,7 @@ const historyEmpty = document.getElementById('historyEmpty');
 const historyCount = document.getElementById('historyCount');
 const streakValue = document.getElementById('streakValue');
 
-/* ---------- Utilidades de fecha (zona horaria local, sin errores UTC) ---------- */
+/* ---------- Utilidades de fecha (zona horaria local, sin errores UTC) */
 
 function toKey(year, month, day) {
   const mm = String(month).padStart(2, '0');
@@ -82,14 +84,12 @@ function calculateStreak(sessions) {
   const today = todayKey();
   const activeDays = new Set();
 
-  // Ignora sesiones con fecha futura.
   for (const session of sessions) {
     if (session && session.fecha && session.fecha <= today) {
       activeDays.add(session.fecha);
     }
   }
 
-  // Si hoy todavía no hay sesión, la racha se mide desde ayer.
   let cursor = activeDays.has(today) ? today : shiftKey(today, -1);
 
   if (!activeDays.has(cursor)) {
@@ -119,6 +119,53 @@ function sortedSessions(sessions) {
 function renderStreak() {
   const streak = calculateStreak(loadSessions());
   streakValue.textContent = streak;
+}
+
+function renderHeatMap() {
+  const container = document.getElementById('heatmap');
+  if (!container) {
+    return;
+  }
+
+  const sessions = loadSessions();
+  const totals = getDailyTotals(sessions);
+  const today = todayKey();
+
+  container.innerHTML = '';
+
+  const weeks = new Map();
+
+  for (let offset = 364; offset >= 0; offset -= 1) {
+    const key = shiftKey(today, -offset);
+    const date = new Date(Number(key.slice(0, 4)), Number(key.slice(5, 7)) - 1, Number(key.slice(8, 10)));
+    const weekday = (date.getDay() + 6) % 7;
+    const weekStart = shiftKey(key, -weekday);
+
+    if (!weeks.has(weekStart)) {
+      weeks.set(weekStart, []);
+    }
+    weeks.get(weekStart).push(key);
+  }
+
+  const sortedWeeks = [...weeks.keys()].sort();
+
+  for (const weekStart of sortedWeeks) {
+    const days = weeks.get(weekStart);
+    for (const dayKey of days) {
+      const level = getIntensityLevel(totals.get(dayKey) || 0);
+      const cell = document.createElement('span');
+      cell.className = `heatmap__cell heatmap__cell--level-${level}`;
+      cell.setAttribute('data-date', dayKey);
+      cell.setAttribute('title', dayKey);
+      container.appendChild(cell);
+    }
+  }
+}
+
+function renderAll() {
+  renderHistory();
+  renderStreak();
+  renderHeatMap();
 }
 
 function renderHistory() {
@@ -171,11 +218,6 @@ function renderHistory() {
     item.append(date, info, minutes, deleteButton);
     historyList.appendChild(item);
   }
-}
-
-function renderAll() {
-  renderHistory();
-  renderStreak();
 }
 
 /* ---------- Evento del formulario ---------- */
