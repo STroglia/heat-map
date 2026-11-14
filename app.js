@@ -1,4 +1,5 @@
 import { getDailyTotals, getIntensityLevel } from './js/heatmap.js';
+import { getCurrentWeekTotal, getWeeklyGoalMinutes, setWeeklyGoalMinutes, getWeeklyGoalStatusText, trackWeeklyGoalAchievement } from './js/weekly.js';
 
 'use strict';
 
@@ -13,6 +14,10 @@ const historyList = document.getElementById('historyList');
 const historyEmpty = document.getElementById('historyEmpty');
 const historyCount = document.getElementById('historyCount');
 const streakValue = document.getElementById('streakValue');
+const goalForm = document.getElementById('goalForm');
+const weeklyGoalInput = document.getElementById('weeklyGoal');
+const weeklyProgress = document.getElementById('weeklyProgress');
+const goalStatus = document.getElementById('goalStatus');
 
 /* ---------- Utilidades de fecha (zona horaria local, sin errores UTC) */
 
@@ -47,18 +52,49 @@ function formatDateLong(key) {
 
 /* ---------- Persistencia en localStorage ---------- */
 
-function loadSessions() {
+function createEmptyRecord() {
+  return { sessions: [], weeklyGoal: null, weeklyAchievements: {} };
+}
+
+function loadRecord() {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
-    const data = raw ? JSON.parse(raw) : [];
-    return Array.isArray(data) ? data : [];
+    const data = raw ? JSON.parse(raw) : createEmptyRecord();
+    const record = Array.isArray(data)
+      ? { sessions: data, weeklyGoal: null, weeklyAchievements: {} }
+      : (data || createEmptyRecord());
+    const weeklyGoal = getWeeklyGoalMinutes(record);
+    const sessions = Array.isArray(record.sessions) ? record.sessions : [];
+    const weeklyAchievements = record.weeklyAchievements && typeof record.weeklyAchievements === 'object'
+      ? record.weeklyAchievements
+      : {};
+    return { sessions, weeklyGoal, weeklyAchievements };
   } catch (error) {
-    return [];
+    return createEmptyRecord();
   }
 }
 
+function saveRecord(record) {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(record));
+}
+
+function loadSessions() {
+  return loadRecord().sessions;
+}
+
 function saveSessions(sessions) {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(sessions));
+  const record = loadRecord();
+  record.sessions = sessions;
+  saveRecord(record);
+}
+
+function loadWeeklyGoal() {
+  return loadRecord().weeklyGoal;
+}
+
+function saveWeeklyGoal(minutes) {
+  const record = setWeeklyGoalMinutes(loadRecord(), minutes);
+  saveRecord(trackWeeklyGoalAchievement(record, todayKey()));
 }
 
 function createSession({ fecha, materia, tema, minutos }) {
@@ -74,8 +110,9 @@ function createSession({ fecha, materia, tema, minutos }) {
 }
 
 function deleteSession(id) {
-  const sessions = loadSessions().filter((session) => session.id !== id);
-  saveSessions(sessions);
+  const record = loadRecord();
+  record.sessions = record.sessions.filter((session) => session.id !== id);
+  saveRecord(trackWeeklyGoalAchievement(record, todayKey()));
 }
 
 /* ---------- Cálculo de la racha ---------- */
@@ -162,10 +199,41 @@ function renderHeatMap() {
   }
 }
 
+function renderWeeklyGoal() {
+  if (!weeklyGoalInput) {
+    return;
+  }
+  const goal = loadWeeklyGoal();
+  weeklyGoalInput.value = goal !== null ? String(goal) : '';
+}
+
+function renderWeeklyProgress() {
+  if (!weeklyProgress) {
+    return;
+  }
+
+  const record = loadRecord();
+  const today = todayKey();
+  const total = getCurrentWeekTotal(record.sessions, today);
+  const goal = record.weeklyGoal;
+
+  if (goal !== null) {
+    weeklyProgress.textContent = `Semana actual: ${total} / ${goal} min`;
+  } else {
+    weeklyProgress.textContent = `Semana actual: ${total} min (sin objetivo fijado)`;
+  }
+
+  if (goalStatus) {
+    goalStatus.textContent = getWeeklyGoalStatusText(goal, total);
+  }
+}
+
 function renderAll() {
   renderHistory();
   renderStreak();
   renderHeatMap();
+  renderWeeklyGoal();
+  renderWeeklyProgress();
 }
 
 function renderHistory() {
@@ -222,6 +290,25 @@ function renderHistory() {
 
 /* ---------- Evento del formulario ---------- */
 
+if (goalForm) {
+  goalForm.addEventListener('submit', (event) => {
+    event.preventDefault();
+
+    const minutos = Number(weeklyGoalInput.value);
+
+    if (!Number.isFinite(minutos) || minutos < 1) {
+      weeklyGoalInput.focus();
+      if (goalStatus) {
+        goalStatus.textContent = 'Ingresá un objetivo válido en minutos.';
+      }
+      return;
+    }
+
+    saveWeeklyGoal(minutos);
+    renderWeeklyProgress();
+  });
+}
+
 form.addEventListener('submit', (event) => {
   event.preventDefault();
 
@@ -240,9 +327,9 @@ form.addEventListener('submit', (event) => {
     return;
   }
 
-  const sessions = loadSessions();
-  sessions.push(createSession({ fecha, materia, tema, minutos }));
-  saveSessions(sessions);
+  const record = loadRecord();
+  record.sessions.push(createSession({ fecha, materia, tema, minutos }));
+  saveRecord(trackWeeklyGoalAchievement(record, todayKey()));
 
   // Limpiar el formulario después de guardar.
   form.reset();
@@ -261,6 +348,9 @@ function init() {
   const today = todayKey();
   fechaInput.max = today;
   fechaInput.value = today;
+
+  const record = trackWeeklyGoalAchievement(loadRecord(), today);
+  saveRecord(record);
 
   renderAll();
 }

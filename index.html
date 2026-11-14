@@ -4,6 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Diario de Estudio</title>
+  <link rel="icon" href="data:," />
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
@@ -21,6 +22,19 @@
     <section class="card" aria-labelledby="heatmap-title">
       <h2 id="heatmap-title">Mapa de calor</h2>
       <div id="heatmap" class="heatmap" role="img" aria-label="Mapa de calor de los ultimos 365 dias"></div>
+    </section>
+
+    <section class="card" aria-labelledby="goal-title">
+      <h2 id="goal-title">Objetivo semanal</h2>
+      <form id="goalForm">
+        <div class="field">
+          <label for="weeklyGoal">Objetivo semanal (minutos)</label>
+          <input type="number" id="weeklyGoal" name="weeklyGoal" min="1" step="1" required />
+        </div>
+        <button type="submit" class="btn">Guardar objetivo</button>
+      </form>
+      <p id="weeklyProgress" class="weekly-progress" aria-live="polite"></p>
+      <p id="goalStatus" class="goal-status" role="status" aria-live="polite"></p>
     </section>
 
     <section class="card" aria-labelledby="form-title">
